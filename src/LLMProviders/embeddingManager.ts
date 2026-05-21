@@ -250,7 +250,7 @@ export default class EmbeddingManager {
       },
       [EmbeddingModelProviders.GOOGLE]: {
         modelName: modelName,
-        apiKey: await getDecryptedKey(settings.googleApiKey),
+        apiKey: await getDecryptedKey(customModel.apiKey || settings.googleApiKey),
       },
       [EmbeddingModelProviders.AZURE_OPENAI]: {
         modelName,

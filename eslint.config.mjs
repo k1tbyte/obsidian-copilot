@@ -57,8 +57,8 @@ export default [
         },
     },
     ...tailwind.configs["flat/recommended"].map((cfg) => ({
-        files: ["**/*.{js,jsx,mjs,cjs,ts,tsx}"],
         ...cfg,
+        files: ["**/*.{jsx,tsx}"],
     })),
 
     {
@@ -82,13 +82,6 @@ export default [
         rules: {
             // Carry-over from legacy .eslintrc
             "no-prototype-builtins": "off",
-            "tailwindcss/classnames-order": "error",
-            "tailwindcss/enforces-negative-arbitrary-values": "error",
-            "tailwindcss/enforces-shorthand": "error",
-            "tailwindcss/migration-from-tailwind-2": "error",
-            "tailwindcss/no-arbitrary-value": "off",
-            "tailwindcss/no-custom-classname": "error",
-            "tailwindcss/no-contradicting-classname": "error",
 
             // obsidianmd: defer to follow-up PRs
             "obsidianmd/ui/sentence-case": "off",
@@ -121,8 +114,21 @@ export default [
         },
     },
 
-    // Guardrail: every standalone React root in the plugin must go through
-    // `createPluginRoot` so descendants can rely on `useApp()` unconditionally
+    // Tailwind rule severity overrides — only for files that can have class strings.
+    {
+        files: ["**/*.{jsx,tsx}"],
+        rules: {
+            "tailwindcss/classnames-order": "error",
+            "tailwindcss/enforces-negative-arbitrary-values": "error",
+            "tailwindcss/enforces-shorthand": "error",
+            "tailwindcss/migration-from-tailwind-2": "error",
+            "tailwindcss/no-arbitrary-value": "off",
+            "tailwindcss/no-custom-classname": "error",
+            "tailwindcss/no-contradicting-classname": "error",
+        },
+    },
+
+    // Guardrail: every standalone React root in the plugin must go through    // `createPluginRoot` so descendants can rely on `useApp()` unconditionally
     // (the bug class fixed in PR #2466). Forbid importing `createRoot` from
     // `react-dom/client` anywhere except the helper itself.
     {
