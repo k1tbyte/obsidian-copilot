@@ -117,10 +117,36 @@ function patchPackageJson() {
 }
 
 // ---------------------------------------------------------------------------
+// Patch 3: eslint.config.mjs — ignore fork-only directories
+// ---------------------------------------------------------------------------
+
+const ESLINT_MARKER = '"patches/**"';
+
+function patchEslintConfig() {
+  let src = read("eslint.config.mjs");
+
+  if (src.includes(ESLINT_MARKER)) {
+    console.log("  eslint.config.mjs — already patched, skipping");
+    return;
+  }
+
+  // Append our ignores just before the closing bracket of the ignores array.
+  // Works regardless of quote style or indentation upstream uses.
+  src = src.replace(
+    /(["']docs\/\*\*["'][,]?\s*\n(\s*))\]/,
+    '$1$2"patches/**",\n$2"typings/**",\n$2]'
+  );
+
+  write("eslint.config.mjs", src);
+  console.log("  eslint.config.mjs — patched ✓");
+}
+
+// ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
 console.log("Applying fork patches...");
 patchEsbuildConfig();
 patchPackageJson();
+patchEslintConfig();
 console.log("Done.");
