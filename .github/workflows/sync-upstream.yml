@@ -1,0 +1,121 @@
+# Syncs this fork with the upstream repo (logancyang/obsidian-copilot) whenever
+# a new semver release tag appears upstream, then re-applies fork patches and
+# pushes — which triggers build-patched-release.yml to produce a new release
+# for BRAT to pick up.
+#
+# Runs on a schedule (every 6 hours) and can be triggered manually from the
+# Actions tab at any time.
+
+name: Sync upstream and rebuild
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      # ── 1. Checkout fork with full history ──────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use a PAT if you need the push to trigger other workflows;
+          # the default GITHUB_TOKEN push does NOT re-trigger workflows.
+          # Create a fine-grained PAT (contents: write) and store it as
+          # secret WORKFLOW_PAT, then replace the line below:
+          #   token: ${{ secrets.WORKFLOW_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 2. Configure git identity ────────────────────────────────────────
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # ── 3. Register upstream and fetch tags ─────────────────────────────
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/logancyang/obsidian-copilot.git
+          git fetch upstream --tags --no-recurse-submodules
+
+      # ── 4. Find the latest upstream semver release tag ──────────────────
+      - name: Resolve latest upstream tag
+        id: upstream
+        run: |
+          # Only stable semver tags (X.Y.Z — no pre-release suffix)
+          TAG=$(git tag --list --sort=-version:refname \
+                | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+                | head -1)
+          if [ -z "$TAG" ]; then
+            echo "No semver tags found upstream — nothing to do."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream release: $TAG"
+
+      # ── 5. Check whether the fork is already at that version ────────────
+      - name: Check if update is needed
+        id: check
+        run: |
+          UPSTREAM_TAG="${{ steps.upstream.outputs.tag }}"
+          CURRENT=$(node -p "require('./manifest.json').version")
+          echo "Fork version : $CURRENT"
+          echo "Upstream tag : $UPSTREAM_TAG"
+          if [ "$CURRENT" = "$UPSTREAM_TAG" ]; then
+            echo "Already up to date — nothing to do."
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Update available: $CURRENT → $UPSTREAM_TAG"
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 6. Merge upstream tag into fork master ───────────────────────────
+      # -X theirs: on text conflicts prefer the upstream (incoming) side.
+      # Our fork-only files (patches/, typings/, workflow ymls, scripts/) have
+      # no upstream counterpart so they are never touched by the merge.
+      # esbuild.config.mjs and package.json will be reset to upstream; step 7
+      # re-applies our programmatic patches on top.
+      - name: Merge upstream tag
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git merge "refs/tags/${{ steps.upstream.outputs.tag }}" \
+            --no-edit \
+            -X theirs \
+            -m "chore: sync upstream ${{ steps.upstream.outputs.tag }}"
+
+      # ── 7. Re-apply fork patches ─────────────────────────────────────────
+      # Idempotent: patches esbuild.config.mjs + package.json; no-ops when
+      # they are already patched (e.g. upstream didn't change those files).
+      - name: Apply fork patches
+        if: steps.check.outputs.needs_update == 'true'
+        run: node scripts/apply-patches.mjs
+
+      # ── 8. Commit patched files (if apply-patches changed anything) ──────
+      - name: Commit patch fixups
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git add esbuild.config.mjs package.json
+          # --allow-empty so the step never fails when nothing changed
+          git commit --allow-empty \
+            -m "chore: apply fork patches on top of ${{ steps.upstream.outputs.tag }}"
+
+      # ── 9. Push to origin master ─────────────────────────────────────────
+      # This push triggers build-patched-release.yml which builds and
+      # publishes the "latest-patched" GitHub release for BRAT.
+      #
+      # NOTE: by default, a push made with GITHUB_TOKEN does NOT trigger other
+      # workflows (GitHub safety policy). To enable triggering
+      # build-patched-release.yml automatically, either:
+      #   a) Replace GITHUB_TOKEN in step 1 with a PAT (secret WORKFLOW_PAT).
+      #   b) OR manually run build-patched-release.yml after this workflow
+      #      finishes (it will pick up the pushed commits).
+      - name: Push to origin
+        if: steps.check.outputs.needs_update == 'true'
+        run: git push origin HEAD:master

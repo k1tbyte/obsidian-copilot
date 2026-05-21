@@ -9,7 +9,8 @@
     "dev:esbuild": "node esbuild.config.mjs",
     "build": "npm run build:tailwind && npm run build:esbuild || exit 1",
     "build:tailwind": "npx tailwindcss -i src/styles/tailwind.css -o styles.css --minify",
-    "build:esbuild": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build:esbuild": "node esbuild.config.mjs production",
+    "typecheck": "tsc -noEmit -skipLibCheck",
     "lint": "eslint .",
     "lint:dead": "npx --yes knip@5",
     "lint:fix": "eslint . --fix",
@@ -20,7 +21,8 @@
     "test:integration": "jest src/integration_tests/",
     "prepare": "husky",
     "prompt:debug": "node scripts/printPromptDebug.js",
-    "test:vault": "bash scripts/test-vault.sh"
+    "test:vault": "bash scripts/test-vault.sh",
+    "watch:vault": "node scripts/watch-vault.mjs"
   },
   "keywords": [],
   "author": "Logan Yang",

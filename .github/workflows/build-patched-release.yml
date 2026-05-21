@@ -1,0 +1,76 @@
+# Builds the plugin and publishes (or updates) a GitHub release tagged
+# "latest-patched" so BRAT can install / auto-update this fork.
+#
+# Triggered by:
+#   • Any push to master/main (manual or via PAT-authenticated sync).
+#   • Completion of the "Sync upstream and rebuild" workflow (handles the
+#     GITHUB_TOKEN push case where GitHub blocks cross-workflow triggers).
+#   • Manual dispatch from the Actions tab.
+#
+# One-time setup:
+#   1. Push this repo to GitHub (your fork: k1tbyte/obsidian-copilot).
+#   2. In Obsidian → BRAT → "Add Beta Plugin" → paste your fork URL.
+#   3. Done. The workflow runs automatically; BRAT picks up new releases.
+
+name: Build and Release (patched)
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+  # Fires after sync-upstream.yml completes successfully — works even when
+  # the sync push used GITHUB_TOKEN (which cannot trigger push events).
+  workflow_run:
+    workflows: ["Sync upstream and rebuild"]
+    types: [completed]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # When triggered by workflow_run, only proceed if the sync succeeded.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+
+    permissions:
+      contents: write   # required to create / update GitHub releases
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json   # honours "engines.node" if present
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (with plus-utils shim)
+        run: npm run build
+
+      - name: Read plugin version
+        id: version
+        run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Create or overwrite the rolling "latest-patched" release so BRAT always
+      # finds a stable tag to compare against, regardless of the semver version.
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-patched
+          name: "Latest patched build (v${{ steps.version.outputs.version }})"
+          body: |
+            Automatically built from fork master with the `plusUtils` shim applied.
+            Upstream version: **${{ steps.version.outputs.version }}**
+          # Overwrite assets when the tag already exists (i.e. on every push).
+          prerelease: false
+          make_latest: false
+          files: |
+            main.js
+            manifest.json
+            styles.css
